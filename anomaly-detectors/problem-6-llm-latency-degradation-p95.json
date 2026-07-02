@@ -14,7 +14,7 @@
       "input": [
         {
           "key": "query",
-          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries p95_ms = percentile(duration, 95) / 1000000.0, interval:1m"
+          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries p95 = percentile(duration, 95), interval:1m | fieldsAdd p95_ms = p95[] / 1000000.0 | fieldsRemove p95"
         },
         {
           "key": "slidingWindow",
