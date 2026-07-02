@@ -90,6 +90,14 @@ OTEL_EXPORTER_OTLP_HEADERS=Authorization=Api-Token dt0c01.XXXXXXXX
 If the endpoint is left blank, spans and metrics print to the console so you can
 still see the instrumentation working without a backend.
 
+## Ready-made dashboard
+
+Import [`dashboards/ai-observability-dashboard.json`](dashboards/ai-observability-dashboard.json)
+into Dynatrace for a persona-layered view — **Executive** (spend, reliability,
+volume), **Director/VP** (model mix, cost drivers, routing quality, safety), and
+**SRE/Developer** (errors, latency, retry storm, fallbacks, rate-limit headroom).
+See [`dashboards/README.md`](dashboards/README.md) for import steps.
+
 ## What to look for in Dynatrace
 
 - **Service flow**: `ai-chat-observability-demo → ai-gateway → Anthropic`, two
