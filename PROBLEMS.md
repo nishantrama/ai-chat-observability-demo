@@ -19,6 +19,50 @@ and `gen_ai.client.operation.duration` metrics.
 | 8 | Prompt injection + invalid-model errors | `app/chat.py`, `gateway/upstream.py` | Error spans (`claude-does-not-exist-9000`), injection exposure |
 | 9 | Full prompt/PII captured on spans, no redaction | `common/telemetry.py`, `app/chat.py` | Sensitive user content (SSN, names) visible in trace attributes |
 
+## Gateway-layer problems
+
+These are anti-patterns of the **gateway itself** (distinct from the LLM/chat
+problems above), each toggleable via env and fully traced under `ai-gateway`:
+
+| # | Anti-pattern | Where | Symptom in Dynatrace |
+|---|--------------|-------|----------------------|
+| G1 | Broken response cache — key includes a per-request nonce, so it never hits | `gateway/upstream.py` `_broken_cache_key` | `gateway.cache_lookup` spans with `gateway.cache.hit=false` always; 0% hit ratio; lookup latency + unbounded `gateway.cache.size` growth |
+| G2 | Retry storm — retries the upstream call with **no backoff** | `gateway/upstream.py` `serve` (`GATEWAY_MAX_RETRIES`) | `gateway.upstream.attempts>1`, repeated `gateway.upstream.retry` span events, amplified cost/latency, self-inflicted 429s |
+| G3 | Silent fallback downgrade — quietly serves the cheapest model after retries fail | `gateway/upstream.py` `serve` (`GATEWAY_FALLBACK_ENABLED`) | `gateway.fallback.used=true` with `from`/`to`; response `model_selected` ≠ routed model (silent quality degradation) |
+| G4 | Misrouting — flaky classifier routes to the wrong tier | `gateway/routing.py` (`GATEWAY_MISROUTE_RATE`) | `gateway.route.misrouted=true`; category↔model mismatch (trivial→Opus waste, complex→Haiku quality risk) |
+| G5 | Routing overhead — classification adds latency before any LLM call | `gateway/routing.py` (`GATEWAY_ROUTE_LATENCY_MS`) | `gateway.classify` span duration + `gateway.classify.overhead_ms`; occasional classifier stalls |
+| G6 | Detect-but-don't-enforce — flags injection/PII but routes through anyway | `gateway/routing.py`, `gateway/main.py` (`GATEWAY_ENFORCE_SAFETY`) | `gateway.safety.flagged=true` while `gateway.safety.enforced=false`; flagged prompts still served |
+
+### Gateway-problem DQL
+
+**Cache hit ratio — always 0 (G1):**
+```
+timeseries lookups = sum(gateway.cache.lookups), by:{`gateway.cache.hit`}, interval:1m
+```
+
+**Retry amplification (G2) — attempts per call:**
+```
+fetch spans | filter isNotNull(gateway.upstream.attempts)
+| summarize avg_attempts = avg(gateway.upstream.attempts), max_attempts = max(gateway.upstream.attempts)
+```
+
+**Silent fallbacks (G3):**
+```
+timeseries fallbacks = sum(gateway.fallbacks), by:{`gateway.fallback.to`}, interval:1m
+```
+
+**Misroutes (G4):**
+```
+fetch logs | filter gateway.route.misrouted == true
+| summarize misroutes = count(), by:{gateway.model.selected, gateway.prompt.category}
+```
+
+**Detect-but-don't-enforce (G6) — flagged yet served:**
+```
+fetch spans | filter gateway.safety.flagged == true and gateway.safety.enforced == false
+| summarize served_despite_flag = count(), by:{gateway.safety.flags}
+```
+
 ## The AI gateway (routing) — traced decisions
 
 Every chat call is routed through the **`ai-gateway`** service, which picks a

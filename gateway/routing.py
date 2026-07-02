@@ -8,7 +8,9 @@ was picked for a given call.
 from __future__ import annotations
 
 import logging
+import random
 import re
+import time
 from dataclasses import dataclass, field
 
 from opentelemetry import metrics, trace
@@ -43,6 +45,8 @@ class Decision:
     reason: str
     tokens_est: int
     safety_flags: list = field(default_factory=list)
+    safety_enforced: bool = False
+    misrouted: bool = False
 
 
 def _categorize(text: str) -> str:
@@ -68,10 +72,17 @@ def route(kind: str, system: str, prompt_text: str, requested_model: str) -> Dec
 
         # --- 1. classify ---
         with tracer.start_as_current_span("gateway.classify") as cs:
+            # PROBLEM G5: routing/classification overhead — pure latency the
+            # gateway adds *before* any LLM call. Occasionally the classifier stalls.
+            overhead_ms = config.GATEWAY_ROUTE_LATENCY_MS + random.randint(0, 40)
+            if random.random() < 0.10:
+                overhead_ms += random.randint(200, 500)  # classifier stall
+            time.sleep(overhead_ms / 1000.0)
             tokens_est = max(1, (len(system) + len(prompt_text)) // 4)
             category = _categorize(prompt_text)
             cs.set_attribute("gateway.prompt.tokens_est", tokens_est)
             cs.set_attribute("gateway.prompt.category", category)
+            cs.set_attribute("gateway.classify.overhead_ms", overhead_ms)
             cs.add_event("classified", {"category": category, "tokens_est": tokens_est})
 
         # --- 2. safety ---
@@ -81,10 +92,14 @@ def route(kind: str, system: str, prompt_text: str, requested_model: str) -> Dec
                 flags.append("prompt_injection")
             if _PII.search(prompt_text):
                 flags.append("pii")
+            # PROBLEM G6: detect-but-don't-enforce — flags are recorded but the
+            # request is routed through anyway unless enforcement is turned on.
+            enforced = config.GATEWAY_ENFORCE_SAFETY
             ss.set_attribute("gateway.safety.flagged", bool(flags))
             ss.set_attribute("gateway.safety.flags", ",".join(flags))
+            ss.set_attribute("gateway.safety.enforced", enforced)
             for f in flags:
-                ss.add_event("safety_flag", {"flag": f})
+                ss.add_event("safety_flag", {"flag": f, "enforced": enforced})
 
         # --- 3. select ---
         with tracer.start_as_current_span("gateway.select_model") as ms:
@@ -101,8 +116,19 @@ def route(kind: str, system: str, prompt_text: str, requested_model: str) -> Dec
                 model, reason = config.MID_MODEL, f"{category} -> mid-tier model"
             else:
                 model, reason = config.MID_MODEL, "general task -> mid-tier default"
+
+            # PROBLEM G4: flaky classifier — occasionally route to the WRONG tier
+            # (over-provision a trivial call to Opus, or under-provision a complex
+            # one to Haiku). Cost waste or quality risk, and a category↔model mismatch.
+            misrouted = False
+            if config.ROUTER_MODE == "smart" and random.random() < config.GATEWAY_MISROUTE_RATE:
+                model = config.CHAT_MODEL if model != config.CHAT_MODEL else config.CHEAP_MODEL
+                reason = f"MISROUTED (flaky classifier) -> {model}"
+                misrouted = True
+
             ms.set_attribute("gateway.model.selected", model)
             ms.set_attribute("gateway.route.reason", reason)
+            ms.set_attribute("gateway.route.misrouted", misrouted)
             ms.set_attribute("gateway.route.overrode_request", model != (requested_model or model))
 
         # Roll the decision up onto the parent route span.
@@ -110,10 +136,12 @@ def route(kind: str, system: str, prompt_text: str, requested_model: str) -> Dec
         span.set_attribute("gateway.prompt.tokens_est", tokens_est)
         span.set_attribute("gateway.model.selected", model)
         span.set_attribute("gateway.route.reason", reason)
+        span.set_attribute("gateway.route.misrouted", misrouted)
         span.set_attribute("gateway.safety.flagged", bool(flags))
+        span.set_attribute("gateway.safety.enforced", enforced)
 
         _decisions.add(1, {"gateway.model.selected": model, "gateway.prompt.category": category,
-                           "llm.call_kind": kind})
+                           "llm.call_kind": kind, "gateway.route.misrouted": str(misrouted)})
         log.info(
             "route decision: %s -> %s (%s)", kind, model, reason,
             extra={
@@ -122,8 +150,11 @@ def route(kind: str, system: str, prompt_text: str, requested_model: str) -> Dec
                 "gateway.prompt.tokens_est": tokens_est,
                 "gateway.model.selected": model,
                 "gateway.route.reason": reason,
+                "gateway.route.misrouted": misrouted,
                 "gateway.route.requested_model": requested_model,
                 "gateway.safety.flags": ",".join(flags),
+                "gateway.safety.enforced": enforced,
             },
         )
-        return Decision(model, category, reason, tokens_est, flags)
+        return Decision(model, category, reason, tokens_est, flags,
+                        safety_enforced=enforced, misrouted=misrouted)

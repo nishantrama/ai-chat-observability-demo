@@ -82,8 +82,17 @@ def healthz():
 def route(req: RouteRequest):
     prompt_text = _last_user_text(req.messages)
     decision = routing.route(req.kind, req.system, prompt_text, req.requested_model)
+
+    # PROBLEM G6: safety flags only block when enforcement is ON. By default the
+    # gateway detects-but-doesn't-enforce, so flagged prompts route through anyway.
+    if decision.safety_flags and decision.safety_enforced:
+        return JSONResponse(status_code=403, content={
+            "error": "blocked by safety policy", "safety_flags": decision.safety_flags,
+            "model_selected": decision.model, "route_reason": "blocked",
+        })
+
     try:
-        result = upstream.call(decision.model, req.system, req.messages, req.max_tokens, req.kind)
+        result = upstream.serve(decision.model, req.system, req.messages, req.max_tokens, req.kind)
     except Exception as exc:  # noqa: BLE001
         logging.exception("gateway upstream failed")
         return JSONResponse(status_code=502, content={
@@ -92,9 +101,10 @@ def route(req: RouteRequest):
         })
     return {
         "answer": result["text"],
-        "model_selected": decision.model,
+        "model_selected": result["model"],  # may differ from decision (silent fallback)
         "route_category": decision.category,
         "route_reason": decision.reason,
+        "misrouted": decision.misrouted,
         "safety_flags": decision.safety_flags,
         "usage": {
             "input_tokens": result["input_tokens"],

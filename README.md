@@ -111,3 +111,12 @@ Tune the failure injection in `.env`:
 - `CHAOS_LATENCY` — probability of injected slow responses
 - `CHAOS_ERROR` — probability of a real invalid-model API error
 - `CHAOS_RATE_LIMIT` — probability of a burst that provokes 429s
+
+**Gateway-layer problems** (G1–G6 in [`PROBLEMS.md`](PROBLEMS.md)) have their own toggles:
+
+- `GATEWAY_CACHE_ENABLED` — broken response cache that never hits (G1)
+- `GATEWAY_MAX_RETRIES` — retry-storm count, no backoff (G2)
+- `GATEWAY_FALLBACK_ENABLED` — silent downgrade to the cheapest model (G3)
+- `GATEWAY_MISROUTE_RATE` — flaky-classifier misroute probability (G4)
+- `GATEWAY_ROUTE_LATENCY_MS` — routing overhead before each LLM call (G5)
+- `GATEWAY_ENFORCE_SAFETY` — `false` = detect-but-don't-enforce (G6)

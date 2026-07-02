@@ -11,6 +11,7 @@ import logging
 import random
 import threading
 import time
+import uuid
 
 import anthropic
 import httpx
@@ -34,6 +35,26 @@ _ratelimit_hist = meter.create_histogram(
     "anthropic.ratelimit.tokens_remaining",
     description="tokens-remaining from the anthropic-ratelimit-* response headers",
 )
+_cache_lookups = meter.create_counter(
+    "gateway.cache.lookups",
+    description="Gateway response-cache lookups, by hit/miss (always miss — key bug)",
+)
+_retries = meter.create_counter(
+    "gateway.upstream.retries",
+    description="Gateway upstream retry attempts (retry storm — no backoff)",
+)
+_fallbacks = meter.create_counter(
+    "gateway.fallbacks",
+    description="Silent fallbacks to the cheapest model after retries exhausted",
+)
+
+# PROBLEM G1: an in-memory 'response cache' whose key includes a per-request
+# nonce, so it never matches — 0% hit rate, pure lookup overhead + unbounded growth.
+_RESPONSE_CACHE: dict[str, dict] = {}
+
+
+def _broken_cache_key(model: str, messages: list) -> str:
+    return f"{model}:{len(messages)}:{uuid.uuid4().hex}"  # nonce -> never repeats
 
 
 def _estimate_cost(model: str, in_tok: int, out_tok: int) -> float:
@@ -96,8 +117,7 @@ def _maybe_chaos() -> None:
 
 
 def call(model: str, system: str, messages: list, max_tokens: int, kind: str):
-    """Make the (chaos-laden) Anthropic call and enrich the gen_ai span."""
-    _maybe_chaos()
+    """One upstream attempt: make the Anthropic call and enrich the gen_ai span."""
     # PROBLEM #8: occasionally corrupt the model name -> real NotFoundError span.
     if random.random() < config.CHAOS_ERROR:
         model = "claude-does-not-exist-9000"
@@ -165,3 +185,61 @@ def call(model: str, system: str, messages: list, max_tokens: int, kind: str):
         "output_tokens": usage.output_tokens,
         "estimated_cost_usd": round(cost, 6),
     }
+
+
+def serve(model: str, system: str, messages: list, max_tokens: int, kind: str):
+    """Gateway serving path around the raw upstream call, with the gateway-layer
+    anti-patterns: a broken cache (G1), a no-backoff retry storm (G2), and a
+    silent fallback to the cheapest model (G3)."""
+    span = trace.get_current_span()
+
+    # PROBLEM G1: response cache that can never hit (nonce in the key).
+    if config.GATEWAY_CACHE_ENABLED:
+        with tracer.start_as_current_span("gateway.cache_lookup") as cspan:
+            time.sleep(random.uniform(0.003, 0.02))  # lookup is not free
+            key = _broken_cache_key(model, messages)
+            hit = key in _RESPONSE_CACHE  # always False — key just got a fresh nonce
+            cspan.set_attribute("gateway.cache.hit", hit)
+            cspan.set_attribute("gateway.cache.key_includes_nonce", True)
+            cspan.set_attribute("gateway.cache.size", len(_RESPONSE_CACHE))
+            _cache_lookups.add(1, {"gateway.cache.hit": str(hit)})
+            if hit:
+                return _RESPONSE_CACHE[key]
+
+    _maybe_chaos()  # injected latency + rate-limit burst (once per request)
+
+    # PROBLEM G2: retry storm — hammer the SAME model with NO backoff on failure.
+    last_exc = None
+    for attempt in range(1, config.GATEWAY_MAX_RETRIES + 1):
+        span.set_attribute("gateway.upstream.attempts", attempt)
+        try:
+            result = call(model, system, messages, max_tokens, kind)
+            if config.GATEWAY_CACHE_ENABLED:
+                _RESPONSE_CACHE[_broken_cache_key(model, messages)] = result  # never re-found
+            return result
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            _retries.add(1, {"gen_ai.request.model": model, "error.type": type(exc).__name__})
+            span.add_event("gateway.upstream.retry", {
+                "attempt": attempt, "model": model,
+                "error.type": type(exc).__name__, "backoff_ms": 0,
+            })
+            log.warning("upstream retry %d/%d (%s) — no backoff",
+                        attempt, config.GATEWAY_MAX_RETRIES, type(exc).__name__)
+
+    # PROBLEM G3: silent fallback — quietly serve the cheapest model and return
+    # a possibly-worse answer without signalling the degradation to the caller.
+    if config.GATEWAY_FALLBACK_ENABLED and model != config.CHEAP_MODEL:
+        span.set_attribute("gateway.fallback.used", True)
+        span.set_attribute("gateway.fallback.from", model)
+        span.set_attribute("gateway.fallback.to", config.CHEAP_MODEL)
+        _fallbacks.add(1, {"gateway.fallback.from": model, "gateway.fallback.to": config.CHEAP_MODEL})
+        log.warning(
+            "SILENT fallback %s -> %s after %d failed attempts",
+            model, config.CHEAP_MODEL, config.GATEWAY_MAX_RETRIES,
+            extra={"gateway.fallback.used": True, "gateway.fallback.from": model,
+                   "gateway.fallback.to": config.CHEAP_MODEL, "llm.call_kind": kind},
+        )
+        return call(config.CHEAP_MODEL, system, messages, max_tokens, kind)
+
+    raise last_exc

@@ -59,3 +59,17 @@ GATEWAY_SERVICE_NAME = os.getenv("GATEWAY_SERVICE_NAME", "ai-gateway")
 CHAOS_LATENCY = _float("CHAOS_LATENCY", 0.25)
 CHAOS_ERROR = _float("CHAOS_ERROR", 0.15)
 CHAOS_RATE_LIMIT = _float("CHAOS_RATE_LIMIT", 0.10)
+
+# --- Gateway-layer problems (each is a real anti-pattern of AI gateways) ---
+# G1: a "response cache" whose key includes a per-request nonce -> never hits.
+GATEWAY_CACHE_ENABLED = _bool("GATEWAY_CACHE_ENABLED", True)
+# G2: retry the upstream call this many times with NO backoff (retry storm).
+GATEWAY_MAX_RETRIES = int(os.getenv("GATEWAY_MAX_RETRIES", "3"))
+# G3: after retries are exhausted, silently serve the cheapest model instead.
+GATEWAY_FALLBACK_ENABLED = _bool("GATEWAY_FALLBACK_ENABLED", True)
+# G4: probability the (flaky) classifier routes to the wrong model tier.
+GATEWAY_MISROUTE_RATE = _float("GATEWAY_MISROUTE_RATE", 0.15)
+# G5: base latency (ms) the routing/classification step adds before any LLM call.
+GATEWAY_ROUTE_LATENCY_MS = int(os.getenv("GATEWAY_ROUTE_LATENCY_MS", "60"))
+# G6: whether safety flags actually BLOCK. False = detect-but-don't-enforce (the problem).
+GATEWAY_ENFORCE_SAFETY = _bool("GATEWAY_ENFORCE_SAFETY", False)
