@@ -60,6 +60,43 @@ fetch spans
 | fieldsAdd calls_per_turn = llm_calls / turns
 ```
 
+## Anthropic-specific telemetry captured
+
+On top of the standard `gen_ai.*` spans/metrics, every LLM call now records the
+fields the Anthropic API actually returns — on the span, as metrics, and on the
+trace-stitched logs:
+
+| Signal | Where it comes from | Why it matters |
+|---|---|---|
+| `gen_ai.usage.estimated_cost_usd` + metric `gen_ai.client.estimated_cost.usd` | token usage × model pricing | Real cost per call/turn (answer calls dominate — problem #2) |
+| `gen_ai.usage.cache_read_input_tokens` + metric `gen_ai.client.cache_read_tokens` | `usage.cache_read_input_tokens` | Always **0** — proves 0% prompt-cache utilisation (problem #4) despite the repeated huge prompt |
+| `gen_ai.response.finish_reason` | `stop_reason` | `max_tokens` flags truncated answers (problem #6) |
+| `anthropic.ratelimit.tokens_remaining` (span + histogram) | `anthropic-ratelimit-*` headers | How close the workload is to the token rate limit |
+| `anthropic.request_id`, `gen_ai.response.id`, `gen_ai.usage.service_tier` | response headers / body | Support correlation + tier visibility |
+
+### Extra DQL
+
+**Estimated cost by fan-out call type (problems #2, #7):**
+```
+timeseries cost = sum(gen_ai.client.estimated_cost.usd), by:{llm.call_kind}, interval:1m
+```
+
+**Prompt-cache utilisation — is it always zero? (problem #4):**
+```
+fetch logs
+| filter isNotNull(llm.call_kind)
+| summarize cache_read = sum(gen_ai.usage.cache_read_input_tokens),
+            input = sum(gen_ai.usage.input_tokens)
+| fieldsAdd cache_hit_ratio_pct = (cache_read / input) * 100
+```
+
+**Truncated responses (problem #6):**
+```
+fetch logs
+| filter gen_ai.response.finish_reason == "max_tokens"
+| summarize truncated = count(), by:{llm.call_kind}
+```
+
 ## Fixing them (the "after")
 
 To demo remediation, flip these in `llm.py`: trim history to the last N turns,
