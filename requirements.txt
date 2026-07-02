@@ -5,8 +5,9 @@ anthropic==0.42.0
 python-dotenv==1.0.1
 
 # --- OpenTelemetry / GenAI observability (OpenLLMetry) ---
-opentelemetry-sdk==1.29.0
-opentelemetry-exporter-otlp-proto-http==1.29.0
-opentelemetry-instrumentation-fastapi==0.50b0
+# Pinned to the OTel 1.28.2 / 0.49b2 line to match the OpenLLMetry instrumentor.
+opentelemetry-sdk==1.28.2
+opentelemetry-exporter-otlp-proto-http==1.28.2
+opentelemetry-instrumentation-fastapi==0.49b2
 # OpenLLMetry instrumentor: emits gen_ai.* spans + token/cost/latency metrics
 opentelemetry-instrumentation-anthropic==0.33.12
