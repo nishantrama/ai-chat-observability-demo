@@ -16,7 +16,13 @@ from . import config
 log = logging.getLogger("llm")
 tracer = trace.get_tracer("ai-chat-demo")
 
-client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+# PROBLEM #6: max_retries=0 — no automatic retry/backoff on 429s or 5xx.
+_client_kwargs = {"api_key": config.ANTHROPIC_API_KEY or "mock-key", "max_retries": 0}
+if config.USE_MOCK:
+    # Point the real SDK at the local mock server; instrumentation is unchanged.
+    _client_kwargs["base_url"] = f"http://{config.MOCK_HOST}:{config.MOCK_PORT}"
+    log.warning("MOCK MODE: using local mock Anthropic at %s", _client_kwargs["base_url"])
+client = anthropic.Anthropic(**_client_kwargs)
 
 # ---------------------------------------------------------------------------
 # PROBLEM #1: unbounded, process-global conversation memory.

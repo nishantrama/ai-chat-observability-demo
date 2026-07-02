@@ -24,6 +24,20 @@ semantic-convention** attributes (`gen_ai.request.model`, token usage, etc.) plu
 the `gen_ai.client.token.usage` and `gen_ai.client.operation.duration` metrics —
 exactly what the Dynatrace AI Observability app ingests.
 
+## No API key? No problem — mock mode
+
+You do **not** need an Anthropic API key. When `ANTHROPIC_API_KEY` is blank (or
+`MOCK_ANTHROPIC=true`), the app boots a built-in **mock Anthropic server** that
+speaks the real Messages API. The genuine Anthropic SDK + OpenLLMetry
+instrumentation run unchanged and pointed at `localhost`, so Dynatrace still
+receives real `gen_ai.*` spans, token counts (derived from actual request size),
+latency, and errors — with zero network calls and zero cost. The mock even
+returns real `404` (unknown model) and `429` (rate-limit) errors to drive the
+error-rate problems.
+
+To use the real Anthropic API instead, set `ANTHROPIC_API_KEY` and
+`MOCK_ANTHROPIC=false`.
+
 ## Quick start
 
 ```bash
@@ -31,7 +45,8 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env: set ANTHROPIC_API_KEY, and the Dynatrace OTLP endpoint + token
+# Optional: set the Dynatrace OTLP endpoint + token. No Anthropic key needed —
+# mock mode is on by default when ANTHROPIC_API_KEY is blank.
 
 uvicorn app.main:app --reload --port 8000
 ```
