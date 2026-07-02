@@ -94,6 +94,13 @@ def chat(session_id: str, user_message: str) -> dict:
         history.append({"role": "user", "content": user_message})
         span.set_attribute("chat.history_len", len(history))
 
+        # Emitted inside the span -> carries trace_id/span_id so Dynatrace
+        # stitches this log line onto the chat.turn trace.
+        log.info(
+            "chat turn started: session=%s history_len=%s model=%s",
+            session_id, len(history), config.CHAT_MODEL,
+        )
+
         _maybe_chaos()
 
         # PROBLEM #7: fan-out / N+1. One user turn triggers FOUR model calls

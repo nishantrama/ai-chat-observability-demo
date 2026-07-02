@@ -1,14 +1,24 @@
 """OpenTelemetry + OpenLLMetry wiring.
 
-Sends traces and metrics to Dynatrace (or any OTLP endpoint). The Anthropic
+Sends traces, metrics AND logs to Dynatrace (or any OTLP endpoint). The Anthropic
 instrumentor produces gen_ai.* spans and the token-usage / operation-duration
 metrics that the Dynatrace **AI Observability** app consumes out of the box.
+Logs are exported through the OTel logging pipeline with the active trace
+context attached (trace_id / span_id), so Dynatrace stitches each log line to
+the span it was emitted under.
 """
 import logging
 
 from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import (
+    BatchLogRecordProcessor,
+    ConsoleLogExporter,
+)
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
     ConsoleMetricExporter,
@@ -69,6 +79,23 @@ def setup_telemetry(app=None) -> None:
         metric_exporter = ConsoleMetricExporter()
     reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=15000)
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
+
+    # ---- Logs (correlated to traces via trace_id / span_id) ----
+    logger_provider = LoggerProvider(resource=resource)
+    if config.OTEL_ENDPOINT:
+        log_exporter = OTLPLogExporter(
+            endpoint=f"{config.OTEL_ENDPOINT}/v1/logs", headers=headers
+        )
+    else:
+        log_exporter = ConsoleLogExporter()
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    set_logger_provider(logger_provider)
+
+    # Route Python's stdlib logging through OTel. The SDK LoggingHandler stamps
+    # each record with the currently-active span's trace_id/span_id, which is
+    # what lets Dynatrace stitch logs onto the trace.
+    otel_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+    logging.getLogger().addHandler(otel_handler)
 
     # ---- Auto-instrumentation ----
     from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
