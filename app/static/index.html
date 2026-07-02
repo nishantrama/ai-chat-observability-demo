@@ -75,7 +75,8 @@
         add('err', 'Error: ' + (data.error || res.status));
       } else {
         add('bot', data.answer);
-        add('meta', `${ms} ms · history: ${data.history_len} msgs`);
+        const model = data.model ? ` · routed to ${data.model}` : '';
+        add('meta', `${ms} ms · history: ${data.history_len} msgs${model}`);
       }
     } catch (err) {
       add('err', 'Network error: ' + err.message);

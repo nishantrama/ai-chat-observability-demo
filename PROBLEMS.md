@@ -11,13 +11,45 @@ and `gen_ai.client.operation.duration` metrics.
 |---|--------------|-------|----------------------------------------|
 | 1 | Unbounded conversation history (never trimmed) | `llm.py` `CONVERSATIONS` | Input tokens & cost climb turn-over-turn; latency creeps up |
 | 2 | Enormous padded system prompt on every call | `llm.py` `HUGE_SYSTEM_PROMPT` | Huge input-token floor even for "hi" |
-| 3 | Always uses expensive Opus, never the cheap model | `llm.py` `_call_model` | Cost per request far above necessary; model distribution 100% Opus |
-| 4 | No response caching (identical prompts re-billed) | `llm.py` | Duplicate prompts, repeated spend, no cache-hit ratio |
-| 5 | `temperature=1.0` everywhere | `llm.py` `_call_model` | Nondeterministic output / hallucination risk |
-| 6 | No timeout, no retry/backoff, raw 500s | `llm.py`, `main.py` | Long-tail latency spikes; unhandled errors → failure rate |
-| 7 | Fan-out / N+1 — 4 model calls per user turn | `llm.py` `chat` | Request count 4× turns; cost & token multiplier |
-| 8 | Prompt injection + invalid-model errors | `llm.py` | Error spans (`claude-does-not-exist-9000`), injection exposure |
-| 9 | Full prompt/PII captured on spans, no redaction | `telemetry.py`, `llm.py` | Sensitive user content (SSN, names) visible in trace attributes |
+| 3 | Chat always *requests* Opus | `app/chat.py` (`requested_model`) | **Now mitigated by the gateway** — with `ROUTER_MODE=smart` the gateway routes by prompt (Haiku/Sonnet/Opus), so the model mix is varied and the shift is visible. Set `ROUTER_MODE=passthrough` to restore 100%-Opus |
+| 4 | No response caching (identical prompts re-billed) | `gateway/upstream.py` | Duplicate prompts, repeated spend, cache-read tokens always 0 |
+| 5 | `temperature=1.0` everywhere | `gateway/upstream.py` `call` | Nondeterministic output / hallucination risk |
+| 6 | No timeout, no retry/backoff, raw 500s | `gateway/upstream.py`, `app/chat.py` | Long-tail latency spikes; unhandled errors → failure rate on both services |
+| 7 | Fan-out / N+1 — 4 gateway calls per user turn | `app/chat.py` `chat` | Request count 4× turns; cost & token multiplier |
+| 8 | Prompt injection + invalid-model errors | `app/chat.py`, `gateway/upstream.py` | Error spans (`claude-does-not-exist-9000`), injection exposure |
+| 9 | Full prompt/PII captured on spans, no redaction | `common/telemetry.py`, `app/chat.py` | Sensitive user content (SSN, names) visible in trace attributes |
+
+## The AI gateway (routing) — traced decisions
+
+Every chat call is routed through the **`ai-gateway`** service, which picks a
+model from the prompt. Each phase is its own span, so a trace shows the decision:
+
+| Span | Attributes |
+|---|---|
+| `gateway.route` | `gateway.request.kind`, `gateway.router.mode`, rolled-up decision |
+| `gateway.classify` | `gateway.prompt.category`, `gateway.prompt.tokens_est` |
+| `gateway.policy.safety` | `gateway.safety.flagged`, `gateway.safety.flags` (injection / PII) |
+| `gateway.select_model` | `gateway.model.selected`, `gateway.route.reason`, `gateway.route.overrode_request` |
+
+Metric: `gateway.routing.decisions` (by `gateway.model.selected` + `gateway.prompt.category`).
+
+**Model mix chosen by the gateway (problem #3 — before/after):**
+```
+timeseries decisions = sum(gateway.routing.decisions), by:{gateway.model.selected}, interval:1m
+```
+
+**Routing reasons — why did it pick what it picked?**
+```
+fetch logs
+| filter isNotNull(gateway.route.reason)
+| summarize calls = count(), by:{gateway.route.reason, gateway.model.selected}
+| sort calls desc
+```
+
+**Safety flags raised at the gateway (problem #8):**
+```
+fetch logs | filter gateway.safety.flags != "" | fields timestamp, gateway.safety.flags, gateway.prompt.category
+```
 
 ## Example DQL
 

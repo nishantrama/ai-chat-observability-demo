@@ -10,19 +10,37 @@ fan-out, prompt injection, and unredacted PII.
 > ship any of this. See [`PROBLEMS.md`](PROBLEMS.md) for the full catalogue and
 > the DQL to detect each issue.
 
-## Stack
+## Architecture — two instrumented services
+
+```
+  browser ──HTTP──▶  chat service            ──HTTP (W3C traceparent)──▶  ai-gateway            ──Anthropic SDK──▶  mock / real Anthropic
+                     (ai-chat-observability-demo)                          (ai-gateway)
+                     builds the (flawed) requests:                         routes each call to a model
+                     unbounded history, huge prompt,                       based on the prompt, then makes
+                     fan-out (4 calls/turn), PII on spans                   the LLM call + enriches the span
+```
+
+Both services are independently OpenTelemetry-instrumented and export to the
+**same** Dynatrace tenant, and trace context is propagated on the chat→gateway
+hop — so **one chat turn is a single distributed trace** spanning both services,
+and Dynatrace draws the service flow `chat → ai-gateway → Anthropic`.
 
 | Layer | Choice |
 |-------|--------|
-| API | FastAPI + Uvicorn |
-| LLM | Anthropic Claude (`claude-opus-4-8`) via the official SDK |
-| Observability | OpenTelemetry SDK + OpenLLMetry Anthropic instrumentor → OTLP → Dynatrace |
-| UI | Single-file static chat page |
+| Services | `chat` (FastAPI, :8000) + `ai-gateway` (FastAPI, :8090) |
+| LLM | Anthropic Claude via the official SDK (called from the gateway) |
+| Routing | Custom, prompt-based; **every decision is a span** (`gateway.classify` → `policy.safety` → `select_model`) |
+| Observability | OpenTelemetry SDK + OpenLLMetry Anthropic instrumentor → OTLP → Dynatrace (traces, metrics, logs) |
+| UI | Single-file static chat page (shows the routed model per turn) |
 
-The OpenLLMetry Anthropic instrumentor emits spans with OpenTelemetry **GenAI
-semantic-convention** attributes (`gen_ai.request.model`, token usage, etc.) plus
-the `gen_ai.client.token.usage` and `gen_ai.client.operation.duration` metrics —
-exactly what the Dynatrace AI Observability app ingests.
+**The gateway decides the model from the prompt** (`ROUTER_MODE=smart`):
+low-stakes fan-out calls (moderation/title) → Haiku, moderate tasks → Sonnet,
+code/math or oversized prompts → Opus. Set `ROUTER_MODE=passthrough` to force
+the original always-Opus behaviour (problem #3) for a before/after demo.
+
+The OpenLLMetry Anthropic instrumentor (in the gateway) emits spans with
+OpenTelemetry **GenAI semantic-convention** attributes plus token/cost/latency
+metrics — exactly what the Dynatrace AI Observability app ingests.
 
 ## No API key? No problem — mock mode
 
@@ -48,8 +66,11 @@ cp .env.example .env
 # Optional: set the Dynatrace OTLP endpoint + token. No Anthropic key needed —
 # mock mode is on by default when ANTHROPIC_API_KEY is blank.
 
-uvicorn app.main:app --reload --port 8000
+./run.sh          # starts ai-gateway (:8090, + mock upstream :8080) and chat (:8000)
 ```
+
+`run.sh` launches **both** services. (To run them by hand:
+`uvicorn gateway.main:app --port 8090` then `uvicorn app.main:app --port 8000`.)
 
 Open <http://localhost:8000> and chat. Then generate load for richer telemetry:
 
@@ -71,10 +92,17 @@ still see the instrumentation working without a backend.
 
 ## What to look for in Dynatrace
 
-Open the **AI Observability** app and you'll see this service (`ai-chat-observability-demo`)
-with its GenAI calls. The problems in [`PROBLEMS.md`](PROBLEMS.md) manifest as
-cost/token spikes, a 100%-Opus model mix, elevated error rate, latency long-tail,
-and ~4 LLM calls per chat turn.
+- **Service flow**: `ai-chat-observability-demo → ai-gateway → Anthropic`, two
+  distinct services on one distributed trace per chat turn.
+- **Distributed trace waterfall**: `chat.turn` → `chat.gateway_call` → (gateway)
+  `gateway.route` → `gateway.classify` / `gateway.policy.safety` /
+  `gateway.select_model` → the `gen_ai` LLM span. You can read *why* each model
+  was chosen from the `gateway.route.reason` / `gateway.prompt.category` span
+  attributes — every routing decision is traced.
+- **AI Observability** app: GenAI calls now attributed to `ai-gateway`, with a
+  **varied model mix** (Haiku/Sonnet/Opus) instead of 100% Opus — problem #3 is
+  now mitigated *and* observable. The other problems in [`PROBLEMS.md`](PROBLEMS.md)
+  (cost/token spikes, error rate, latency long-tail, ~4 calls/turn fan-out) remain.
 
 ## Chaos toggles
 
