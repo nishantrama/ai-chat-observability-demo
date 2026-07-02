@@ -10,7 +10,7 @@
     "1": {
       "type": "data",
       "title": "Total estimated LLM spend (USD)",
-      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd)",
+      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd) | fieldsAdd total_usd = arraySum(spend) | fields total_usd",
       "visualization": "singleValue",
       "visualizationSettings": {
         "chartSettings": {
