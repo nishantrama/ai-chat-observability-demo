@@ -16,11 +16,33 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, ConsoleLogExporter
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import (
+    Counter,
+    Histogram,
+    MeterProvider,
+    ObservableCounter,
+    ObservableGauge,
+    ObservableUpDownCounter,
+    UpDownCounter,
+)
 from opentelemetry.sdk.metrics.export import (
+    AggregationTemporality,
     ConsoleMetricExporter,
     PeriodicExportingMetricReader,
 )
+
+# Dynatrace's OTLP metric ingest requires DELTA temporality. The OTel SDK
+# defaults to CUMULATIVE for counters, which Dynatrace silently drops — so the
+# custom gen_ai/gateway metrics never appear in Grail. Force delta for all
+# instrument kinds.
+_DELTA = {
+    Counter: AggregationTemporality.DELTA,
+    UpDownCounter: AggregationTemporality.DELTA,
+    Histogram: AggregationTemporality.DELTA,
+    ObservableCounter: AggregationTemporality.DELTA,
+    ObservableUpDownCounter: AggregationTemporality.DELTA,
+    ObservableGauge: AggregationTemporality.DELTA,
+}
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
@@ -61,8 +83,9 @@ def setup_telemetry(app, service_name: str, instrument_anthropic: bool = False) 
 
     # ---- Metrics ----
     metric_exporter = (
-        OTLPMetricExporter(endpoint=f"{config.OTEL_ENDPOINT}/v1/metrics", headers=headers)
-        if to_dt else ConsoleMetricExporter()
+        OTLPMetricExporter(endpoint=f"{config.OTEL_ENDPOINT}/v1/metrics", headers=headers,
+                           preferred_temporality=_DELTA)
+        if to_dt else ConsoleMetricExporter(preferred_temporality=_DELTA)
     )
     reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=15000)
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
