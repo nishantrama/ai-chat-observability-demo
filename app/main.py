@@ -74,7 +74,14 @@ def chat(req: ChatRequest):
         return result
     except Exception as exc:  # noqa: BLE001
         # PROBLEM #6: errors bubble up to a raw 500 with no graceful degradation.
-        logging.exception("chat failed")
+        logging.exception(
+            "chat failed",
+            extra={
+                "session.id": req.session_id,
+                "error.type": type(exc).__name__,
+                "http.status_code": 500,
+            },
+        )
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 

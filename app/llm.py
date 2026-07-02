@@ -65,18 +65,48 @@ def _maybe_chaos() -> None:
                 log.error("burst call failed: %s", exc)
 
 
-def _call_model(model: str, system: str, messages: list[dict], max_tokens: int):
-    """PROBLEM #6: raw call, no timeout param, no retry, no fallback model."""
+def _call_model(model: str, system: str, messages: list[dict], max_tokens: int, kind: str):
+    """PROBLEM #6: raw call, no timeout param, no retry, no fallback model.
+
+    `kind` labels which fan-out call this is (moderation/answer/title/summary).
+    Emits a structured log per call so the trace-stitched logs carry the model
+    and token usage as queryable attributes in Dynatrace.
+    """
     # PROBLEM #8: occasionally use an invalid model name -> real API error span.
     if random.random() < config.CHAOS_ERROR:
         model = "claude-does-not-exist-9000"
-    return client.messages.create(
-        model=model,
-        system=system,
-        max_tokens=max_tokens,
-        temperature=1.0,  # PROBLEM #5: max temperature -> nondeterministic / hallucination-prone
-        messages=messages,
+    try:
+        resp = client.messages.create(
+            model=model,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=1.0,  # PROBLEM #5: max temperature -> nondeterministic / hallucination-prone
+            messages=messages,
+        )
+    except Exception as exc:  # noqa: BLE001 — logged with attributes, then re-raised
+        log.warning(
+            "llm call failed (%s)", kind,
+            extra={
+                "gen_ai.request.model": model,
+                "llm.call_kind": kind,
+                "error.type": type(exc).__name__,
+            },
+        )
+        raise
+    usage = resp.usage
+    log.info(
+        "llm call complete (%s)", kind,
+        extra={
+            "gen_ai.request.model": model,
+            "gen_ai.response.model": getattr(resp, "model", model),
+            "gen_ai.usage.input_tokens": usage.input_tokens,
+            "gen_ai.usage.output_tokens": usage.output_tokens,
+            "gen_ai.usage.total_tokens": usage.input_tokens + usage.output_tokens,
+            "llm.call_kind": kind,
+            "llm.max_tokens": max_tokens,
+        },
     )
+    return resp
 
 
 def _text(resp) -> str:
@@ -99,6 +129,11 @@ def chat(session_id: str, user_message: str) -> dict:
         log.info(
             "chat turn started: session=%s history_len=%s model=%s",
             session_id, len(history), config.CHAT_MODEL,
+            extra={
+                "session.id": session_id,
+                "chat.history_len": len(history),
+                "gen_ai.request.model": config.CHAT_MODEL,
+            },
         )
 
         _maybe_chaos()
@@ -112,13 +147,14 @@ def chat(session_id: str, user_message: str) -> dict:
             "Reply only SAFE or UNSAFE.",
             [{"role": "user", "content": f"Is this safe? {user_message}"}],
             max_tokens=5,
+            kind="moderation",
         )
 
         # 2) Main answer.
         # PROBLEM #3: always the expensive Opus model, never the cheap one.
         # PROBLEM #8 (injection): user text spliced straight into the system prompt.
         system = HUGE_SYSTEM_PROMPT + f"\nThe user's name may be: {user_message}"
-        resp = _call_model(config.CHAT_MODEL, system, list(history), max_tokens=1024)
+        resp = _call_model(config.CHAT_MODEL, system, list(history), max_tokens=1024, kind="answer")
         answer = _text(resp)
         history.append({"role": "assistant", "content": answer})
 
@@ -128,6 +164,7 @@ def chat(session_id: str, user_message: str) -> dict:
             "Return a 3-word title.",
             [{"role": "user", "content": answer}],
             max_tokens=15,
+            kind="title",
         )
 
         # 4) Rolling summary of the whole (growing) conversation.
@@ -136,6 +173,7 @@ def chat(session_id: str, user_message: str) -> dict:
             "Summarise the conversation.",
             list(history),
             max_tokens=200,
+            kind="summary",
         )
 
         span.set_attribute("gen_ai.response.model", getattr(resp, "model", config.CHAT_MODEL))
