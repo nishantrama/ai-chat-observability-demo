@@ -31,7 +31,7 @@
     "2": {
       "type": "data",
       "title": "LLM success rate (%)",
-      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize total = count(), ok = countIf(span.status_code != \"ERROR\") | fieldsAdd success_rate_pct = (toDouble(ok) / total) * 100 | fields success_rate_pct",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize total = count(), errors = countIf(span.status_code == \"error\") | fieldsAdd success_rate_pct = (toDouble(total - errors) / total) * 100 | fields success_rate_pct",
       "visualization": "singleValue",
       "visualizationSettings": {
         "chartSettings": {
@@ -157,7 +157,7 @@
     "8": {
       "type": "data",
       "title": "Failed LLM calls",
-      "query": "fetch spans | filter isNotNull(gen_ai.request.model) and span.status_code == \"ERROR\" | summarize failed = count()",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) and span.status_code == \"error\" | summarize failed = count()",
       "visualization": "singleValue",
       "visualizationSettings": {
         "chartSettings": {
@@ -377,7 +377,7 @@
     "20": {
       "type": "data",
       "title": "LLM error rate over time (%)",
-      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"ERROR\") | fieldsAdd error_rate_pct = (errors[] / total[]) * 100",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"error\") | fieldsAdd error_rate_pct = (errors[] / total[]) * 100",
       "visualization": "lineChart",
       "visualizationSettings": {
         "chartSettings": {
@@ -398,7 +398,7 @@
     "21": {
       "type": "data",
       "title": "Errors by type",
-      "query": "fetch spans | filter span.status_code == \"ERROR\" and isNotNull(error.type) | summarize count = count(), by:{error.type} | sort count desc",
+      "query": "fetch logs | filter isNotNull(error.type) | summarize count = count(), by:{error.type} | sort count desc",
       "visualization": "table",
       "visualizationSettings": {
         "chartSettings": {
