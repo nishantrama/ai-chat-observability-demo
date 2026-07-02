@@ -1,346 +1,743 @@
 {
-  "id": "b7e4c1a2-9f3d-4a6e-8c21-ai0bs3rv4b1e",
-  "name": "AI Chat + Gateway Observability (Exec / Director / SRE)",
-  "type": "dashboard",
-  "isPrivate": false,
-  "content": {
-    "version": 10,
-    "variables": [],
-    "tiles": {
-      "0": {
-        "type": "markdown",
-        "title": "",
-        "content": "# 🏦 Executive View\nBusiness outcomes at a glance — **spend**, **reliability**, and **volume** across the AI chat app and gateway."
-      },
-      "1": {
-        "type": "data",
-        "title": "Total estimated LLM spend (USD)",
-        "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd)",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "USD spend", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "2": {
-        "type": "data",
-        "title": "LLM success rate (%)",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize total = count(), ok = countIf(span.status_code != \"ERROR\") | fieldsAdd success_rate_pct = (toDouble(ok) / total) * 100 | fields success_rate_pct",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "success %", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "3": {
-        "type": "data",
-        "title": "Chat turns handled",
-        "query": "fetch spans | filter span.name == \"chat.turn\" | summarize turns = count()",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "turns", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "4": {
-        "type": "data",
-        "title": "LLM calls made",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize llm_calls = count()",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "calls", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "5": {
-        "type": "data",
-        "title": "Spend over time by model",
-        "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{gen_ai.request.model}, interval:1m",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "6": {
-        "type": "data",
-        "title": "Cost by model (total USD)",
-        "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{gen_ai.request.model} | fieldsAdd total_usd = arraySum(spend) | fields model = gen_ai.request.model, total_usd | sort total_usd desc",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "7": {
-        "type": "data",
-        "title": "Total tokens consumed",
-        "query": "fetch logs | filter isNotNull(gen_ai.usage.total_tokens) | summarize tokens = sum(gen_ai.usage.total_tokens)",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "tokens", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "8": {
-        "type": "data",
-        "title": "Failed LLM calls",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) and span.status_code == \"ERROR\" | summarize failed = count()",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "failed", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-
-      "9": {
-        "type": "markdown",
-        "title": "",
-        "content": "# 📊 Director / VP View\nEfficiency & governance — **model strategy**, **cost drivers**, **routing quality**, and **safety posture**."
-      },
-      "10": {
-        "type": "data",
-        "title": "Model distribution (most popular model)",
-        "query": "timeseries decisions = sum(gateway.routing.decisions), by:{gateway.model.selected} | fieldsAdd total = arraySum(decisions) | fields model = gateway.model.selected, total | sort total desc",
-        "visualization": "barChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "11": {
-        "type": "data",
-        "title": "Cost by call type (fan-out driver)",
-        "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{llm.call_kind} | fieldsAdd total_usd = arraySum(spend) | fields call_kind = llm.call_kind, total_usd | sort total_usd desc",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "12": {
-        "type": "data",
-        "title": "Cache lookups by result (G1 — always miss)",
-        "query": "timeseries lookups = sum(gateway.cache.lookups), by:{gateway.cache.hit}, interval:1m",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "13": {
-        "type": "data",
-        "title": "Routing: misrouted vs correct (G4)",
-        "query": "timeseries decisions = sum(gateway.routing.decisions), by:{gateway.route.misrouted} | fieldsAdd total = arraySum(decisions) | fields misrouted = gateway.route.misrouted, total | sort total desc",
-        "visualization": "barChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "14": {
-        "type": "data",
-        "title": "Safety: flagged vs enforced (G6 — detect≠enforce)",
-        "query": "fetch spans | filter span.name == \"gateway.route\" | summarize routes = count(), flagged = countIf(gateway.safety.flagged == true), enforced = countIf(gateway.safety.enforced == true)",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "15": {
-        "type": "data",
-        "title": "LLM calls per chat turn (fan-out #7)",
-        "query": "fetch spans | summarize turns = countIf(span.name == \"chat.turn\"), calls = countIf(isNotNull(gen_ai.request.model)) | fieldsAdd calls_per_turn = toDouble(calls) / turns | fields calls_per_turn",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "calls/turn", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "16": {
-        "type": "data",
-        "title": "Cache hit ratio % (G1 → ~0)",
-        "query": "fetch spans | filter span.name == \"gateway.cache_lookup\" | summarize total = count(), hits = countIf(gateway.cache.hit == true) | fieldsAdd hit_ratio_pct = (toDouble(hits) / total) * 100 | fields hit_ratio_pct",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "cache hit %", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "17": {
-        "type": "data",
-        "title": "Misroute rate %",
-        "query": "fetch spans | filter span.name == \"gateway.route\" | summarize total = count(), misrouted = countIf(gateway.route.misrouted == true) | fieldsAdd misroute_pct = (toDouble(misrouted) / total) * 100 | fields misroute_pct",
-        "visualization": "singleValue",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "misroute %", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "18": {
-        "type": "data",
-        "title": "Token usage over time by model",
-        "query": "fetch logs | filter isNotNull(gen_ai.usage.total_tokens) | makeTimeseries tokens = sum(gen_ai.usage.total_tokens), by:{gen_ai.request.model}",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-
-      "19": {
-        "type": "markdown",
-        "title": "",
-        "content": "# 🛠️ SRE / Developer View\nReliability engineering — **errors**, **latency**, **retry storms**, **fallbacks**, and **rate-limit headroom** across both services."
-      },
-      "20": {
-        "type": "data",
-        "title": "LLM error rate over time (%)",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"ERROR\") | fieldsAdd error_rate_pct = (errors[] / total[]) * 100",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "21": {
-        "type": "data",
-        "title": "Errors by type",
-        "query": "fetch spans | filter span.status_code == \"ERROR\" and isNotNull(error.type) | summarize count = count(), by:{error.type} | sort count desc",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "22": {
-        "type": "data",
-        "title": "LLM latency p50 / p95 / p99 (ns)",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries p50 = percentile(duration, 50), p95 = percentile(duration, 95), p99 = percentile(duration, 99)",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "23": {
-        "type": "data",
-        "title": "Retry storm over time by error (G2)",
-        "query": "timeseries retries = sum(gateway.upstream.retries), by:{error.type}, interval:1m",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "24": {
-        "type": "data",
-        "title": "Silent fallbacks over time (G3)",
-        "query": "timeseries fallbacks = sum(gateway.fallbacks), interval:1m",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "25": {
-        "type": "data",
-        "title": "Rate-limit headroom (tokens remaining)",
-        "query": "timeseries tokens_remaining = avg(anthropic.ratelimit.tokens_remaining), interval:1m",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "26": {
-        "type": "data",
-        "title": "Gateway routing overhead ms (G5)",
-        "query": "fetch spans | filter span.name == \"gateway.classify\" | makeTimeseries avg_overhead_ms = avg(gateway.classify.overhead_ms), p95_overhead_ms = percentile(gateway.classify.overhead_ms, 95)",
-        "visualization": "lineChart",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "27": {
-        "type": "data",
-        "title": "Upstream attempts (retry storm — avg/max)",
-        "query": "fetch spans | filter isNotNull(gateway.upstream.attempts) | summarize avg_attempts = avg(gateway.upstream.attempts), max_attempts = max(gateway.upstream.attempts)",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
-        }
-      },
-      "28": {
-        "type": "data",
-        "title": "Slowest LLM calls",
-        "query": "fetch spans | filter isNotNull(gen_ai.request.model) | fields span.name, duration, model = gen_ai.request.model, finish = gen_ai.response.finish_reason | sort duration desc | limit 20",
-        "visualization": "table",
-        "visualizationSettings": {
-          "chartSettings": { "gapPolicy": "connect" },
-          "singleValue": { "showLabel": true, "label": "", "autoscale": true },
-          "table": { "enableLineWrap": true, "hiddenColumns": [], "lineWrapIds": [] }
+  "version": 10,
+  "variables": [],
+  "tiles": {
+    "0": {
+      "type": "markdown",
+      "title": "",
+      "content": "# \ud83c\udfe6 Executive View\nBusiness outcomes at a glance \u2014 **spend**, **reliability**, and **volume** across the AI chat app and gateway."
+    },
+    "1": {
+      "type": "data",
+      "title": "Total estimated LLM spend (USD)",
+      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "USD spend",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
         }
       }
     },
-    "layouts": {
-      "0":  { "x": 0,  "y": 0,  "w": 24, "h": 2 },
-      "1":  { "x": 0,  "y": 2,  "w": 6,  "h": 4 },
-      "2":  { "x": 6,  "y": 2,  "w": 6,  "h": 4 },
-      "3":  { "x": 12, "y": 2,  "w": 6,  "h": 4 },
-      "4":  { "x": 18, "y": 2,  "w": 6,  "h": 4 },
-      "5":  { "x": 0,  "y": 6,  "w": 12, "h": 6 },
-      "6":  { "x": 12, "y": 6,  "w": 12, "h": 6 },
-      "7":  { "x": 0,  "y": 12, "w": 6,  "h": 4 },
-      "8":  { "x": 6,  "y": 12, "w": 6,  "h": 4 },
-      "9":  { "x": 0,  "y": 16, "w": 24, "h": 2 },
-      "10": { "x": 0,  "y": 18, "w": 12, "h": 6 },
-      "11": { "x": 12, "y": 18, "w": 12, "h": 6 },
-      "12": { "x": 0,  "y": 24, "w": 8,  "h": 6 },
-      "13": { "x": 8,  "y": 24, "w": 8,  "h": 6 },
-      "14": { "x": 16, "y": 24, "w": 8,  "h": 6 },
-      "15": { "x": 0,  "y": 30, "w": 6,  "h": 4 },
-      "16": { "x": 6,  "y": 30, "w": 6,  "h": 4 },
-      "17": { "x": 12, "y": 30, "w": 6,  "h": 4 },
-      "18": { "x": 0,  "y": 34, "w": 24, "h": 6 },
-      "19": { "x": 0,  "y": 40, "w": 24, "h": 2 },
-      "20": { "x": 0,  "y": 42, "w": 12, "h": 6 },
-      "21": { "x": 12, "y": 42, "w": 12, "h": 6 },
-      "22": { "x": 0,  "y": 48, "w": 12, "h": 6 },
-      "23": { "x": 12, "y": 48, "w": 12, "h": 6 },
-      "24": { "x": 0,  "y": 54, "w": 8,  "h": 6 },
-      "25": { "x": 8,  "y": 54, "w": 8,  "h": 6 },
-      "26": { "x": 16, "y": 54, "w": 8,  "h": 6 },
-      "27": { "x": 0,  "y": 60, "w": 8,  "h": 6 },
-      "28": { "x": 8,  "y": 60, "w": 16, "h": 6 }
+    "2": {
+      "type": "data",
+      "title": "LLM success rate (%)",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize total = count(), ok = countIf(span.status_code != \"ERROR\") | fieldsAdd success_rate_pct = (toDouble(ok) / total) * 100 | fields success_rate_pct",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "success %",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "3": {
+      "type": "data",
+      "title": "Chat turns handled",
+      "query": "fetch spans | filter span.name == \"chat.turn\" | summarize turns = count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "turns",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "4": {
+      "type": "data",
+      "title": "LLM calls made",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | summarize llm_calls = count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "calls",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "5": {
+      "type": "data",
+      "title": "Spend over time by model",
+      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{gen_ai.request.model}, interval:1m",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "6": {
+      "type": "data",
+      "title": "Cost by model (total USD)",
+      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{gen_ai.request.model} | fieldsAdd total_usd = arraySum(spend) | fields model = gen_ai.request.model, total_usd | sort total_usd desc",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "7": {
+      "type": "data",
+      "title": "Total tokens consumed",
+      "query": "fetch logs | filter isNotNull(gen_ai.usage.total_tokens) | summarize tokens = sum(gen_ai.usage.total_tokens)",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "tokens",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "8": {
+      "type": "data",
+      "title": "Failed LLM calls",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) and span.status_code == \"ERROR\" | summarize failed = count()",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "failed",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "9": {
+      "type": "markdown",
+      "title": "",
+      "content": "# \ud83d\udcca Director / VP View\nEfficiency & governance \u2014 **model strategy**, **cost drivers**, **routing quality**, and **safety posture**."
+    },
+    "10": {
+      "type": "data",
+      "title": "Model distribution (most popular model)",
+      "query": "timeseries decisions = sum(gateway.routing.decisions), by:{gateway.model.selected} | fieldsAdd total = arraySum(decisions) | fields model = gateway.model.selected, total | sort total desc",
+      "visualization": "barChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "11": {
+      "type": "data",
+      "title": "Cost by call type (fan-out driver)",
+      "query": "timeseries spend = sum(gen_ai.client.estimated_cost.usd), by:{llm.call_kind} | fieldsAdd total_usd = arraySum(spend) | fields call_kind = llm.call_kind, total_usd | sort total_usd desc",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "12": {
+      "type": "data",
+      "title": "Cache lookups by result (G1 \u2014 always miss)",
+      "query": "timeseries lookups = sum(gateway.cache.lookups), by:{gateway.cache.hit}, interval:1m",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "13": {
+      "type": "data",
+      "title": "Routing: misrouted vs correct (G4)",
+      "query": "timeseries decisions = sum(gateway.routing.decisions), by:{gateway.route.misrouted} | fieldsAdd total = arraySum(decisions) | fields misrouted = gateway.route.misrouted, total | sort total desc",
+      "visualization": "barChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "14": {
+      "type": "data",
+      "title": "Safety: flagged vs enforced (G6 \u2014 detect\u2260enforce)",
+      "query": "fetch spans | filter span.name == \"gateway.route\" | summarize routes = count(), flagged = countIf(gateway.safety.flagged == true), enforced = countIf(gateway.safety.enforced == true)",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "15": {
+      "type": "data",
+      "title": "LLM calls per chat turn (fan-out #7)",
+      "query": "fetch spans | summarize turns = countIf(span.name == \"chat.turn\"), calls = countIf(isNotNull(gen_ai.request.model)) | fieldsAdd calls_per_turn = toDouble(calls) / turns | fields calls_per_turn",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "calls/turn",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "16": {
+      "type": "data",
+      "title": "Cache hit ratio % (G1 \u2192 ~0)",
+      "query": "fetch spans | filter span.name == \"gateway.cache_lookup\" | summarize total = count(), hits = countIf(gateway.cache.hit == true) | fieldsAdd hit_ratio_pct = (toDouble(hits) / total) * 100 | fields hit_ratio_pct",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "cache hit %",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "17": {
+      "type": "data",
+      "title": "Misroute rate %",
+      "query": "fetch spans | filter span.name == \"gateway.route\" | summarize total = count(), misrouted = countIf(gateway.route.misrouted == true) | fieldsAdd misroute_pct = (toDouble(misrouted) / total) * 100 | fields misroute_pct",
+      "visualization": "singleValue",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "misroute %",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "18": {
+      "type": "data",
+      "title": "Token usage over time by model",
+      "query": "fetch logs | filter isNotNull(gen_ai.usage.total_tokens) | makeTimeseries tokens = sum(gen_ai.usage.total_tokens), by:{gen_ai.request.model}",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "19": {
+      "type": "markdown",
+      "title": "",
+      "content": "# \ud83d\udee0\ufe0f SRE / Developer View\nReliability engineering \u2014 **errors**, **latency**, **retry storms**, **fallbacks**, and **rate-limit headroom** across both services."
+    },
+    "20": {
+      "type": "data",
+      "title": "LLM error rate over time (%)",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"ERROR\") | fieldsAdd error_rate_pct = (errors[] / total[]) * 100",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "21": {
+      "type": "data",
+      "title": "Errors by type",
+      "query": "fetch spans | filter span.status_code == \"ERROR\" and isNotNull(error.type) | summarize count = count(), by:{error.type} | sort count desc",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "22": {
+      "type": "data",
+      "title": "LLM latency p50 / p95 / p99 (ns)",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries p50 = percentile(duration, 50), p95 = percentile(duration, 95), p99 = percentile(duration, 99)",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "23": {
+      "type": "data",
+      "title": "Retry storm over time by error (G2)",
+      "query": "timeseries retries = sum(gateway.upstream.retries), by:{error.type}, interval:1m",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "24": {
+      "type": "data",
+      "title": "Silent fallbacks over time (G3)",
+      "query": "timeseries fallbacks = sum(gateway.fallbacks), interval:1m",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "25": {
+      "type": "data",
+      "title": "Rate-limit headroom (tokens remaining)",
+      "query": "timeseries tokens_remaining = avg(anthropic.ratelimit.tokens_remaining), interval:1m",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "26": {
+      "type": "data",
+      "title": "Gateway routing overhead ms (G5)",
+      "query": "fetch spans | filter span.name == \"gateway.classify\" | makeTimeseries avg_overhead_ms = avg(gateway.classify.overhead_ms), p95_overhead_ms = percentile(gateway.classify.overhead_ms, 95)",
+      "visualization": "lineChart",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "27": {
+      "type": "data",
+      "title": "Upstream attempts (retry storm \u2014 avg/max)",
+      "query": "fetch spans | filter isNotNull(gateway.upstream.attempts) | summarize avg_attempts = avg(gateway.upstream.attempts), max_attempts = max(gateway.upstream.attempts)",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    },
+    "28": {
+      "type": "data",
+      "title": "Slowest LLM calls",
+      "query": "fetch spans | filter isNotNull(gen_ai.request.model) | fields span.name, duration, model = gen_ai.request.model, finish = gen_ai.response.finish_reason | sort duration desc | limit 20",
+      "visualization": "table",
+      "visualizationSettings": {
+        "chartSettings": {
+          "gapPolicy": "connect"
+        },
+        "singleValue": {
+          "showLabel": true,
+          "label": "",
+          "autoscale": true
+        },
+        "table": {
+          "enableLineWrap": true,
+          "hiddenColumns": [],
+          "lineWrapIds": []
+        }
+      }
+    }
+  },
+  "layouts": {
+    "0": {
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 2
+    },
+    "1": {
+      "x": 0,
+      "y": 2,
+      "w": 6,
+      "h": 4
+    },
+    "2": {
+      "x": 6,
+      "y": 2,
+      "w": 6,
+      "h": 4
+    },
+    "3": {
+      "x": 12,
+      "y": 2,
+      "w": 6,
+      "h": 4
+    },
+    "4": {
+      "x": 18,
+      "y": 2,
+      "w": 6,
+      "h": 4
+    },
+    "5": {
+      "x": 0,
+      "y": 6,
+      "w": 12,
+      "h": 6
+    },
+    "6": {
+      "x": 12,
+      "y": 6,
+      "w": 12,
+      "h": 6
+    },
+    "7": {
+      "x": 0,
+      "y": 12,
+      "w": 6,
+      "h": 4
+    },
+    "8": {
+      "x": 6,
+      "y": 12,
+      "w": 6,
+      "h": 4
+    },
+    "9": {
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 2
+    },
+    "10": {
+      "x": 0,
+      "y": 18,
+      "w": 12,
+      "h": 6
+    },
+    "11": {
+      "x": 12,
+      "y": 18,
+      "w": 12,
+      "h": 6
+    },
+    "12": {
+      "x": 0,
+      "y": 24,
+      "w": 8,
+      "h": 6
+    },
+    "13": {
+      "x": 8,
+      "y": 24,
+      "w": 8,
+      "h": 6
+    },
+    "14": {
+      "x": 16,
+      "y": 24,
+      "w": 8,
+      "h": 6
+    },
+    "15": {
+      "x": 0,
+      "y": 30,
+      "w": 6,
+      "h": 4
+    },
+    "16": {
+      "x": 6,
+      "y": 30,
+      "w": 6,
+      "h": 4
+    },
+    "17": {
+      "x": 12,
+      "y": 30,
+      "w": 6,
+      "h": 4
+    },
+    "18": {
+      "x": 0,
+      "y": 34,
+      "w": 24,
+      "h": 6
+    },
+    "19": {
+      "x": 0,
+      "y": 40,
+      "w": 24,
+      "h": 2
+    },
+    "20": {
+      "x": 0,
+      "y": 42,
+      "w": 12,
+      "h": 6
+    },
+    "21": {
+      "x": 12,
+      "y": 42,
+      "w": 12,
+      "h": 6
+    },
+    "22": {
+      "x": 0,
+      "y": 48,
+      "w": 12,
+      "h": 6
+    },
+    "23": {
+      "x": 12,
+      "y": 48,
+      "w": 12,
+      "h": 6
+    },
+    "24": {
+      "x": 0,
+      "y": 54,
+      "w": 8,
+      "h": 6
+    },
+    "25": {
+      "x": 8,
+      "y": 54,
+      "w": 8,
+      "h": 6
+    },
+    "26": {
+      "x": 16,
+      "y": 54,
+      "w": 8,
+      "h": 6
+    },
+    "27": {
+      "x": 0,
+      "y": 60,
+      "w": 8,
+      "h": 6
+    },
+    "28": {
+      "x": 8,
+      "y": 60,
+      "w": 16,
+      "h": 6
     }
   }
 }
