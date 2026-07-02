@@ -1,0 +1,62 @@
+{
+  "schemaId": "builtin:davis.anomaly-detectors",
+  "scope": "environment",
+  "value": {
+    "enabled": true,
+    "title": "Problem #6/#8 \u00b7 LLM error rate elevated",
+    "description": "LLM call error rate crossed the threshold (invalid-model / rate-limit / upstream failures).",
+    "source": "AI Chat Observability Demo",
+    "executionSettings": {
+      "queryOffset": 1
+    },
+    "analyzer": {
+      "name": "dt.statistics.ui.anomaly_detection.StaticThresholdAnomalyDetectionAnalyzer",
+      "input": [
+        {
+          "key": "query",
+          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"ERROR\"), interval:1m | fieldsAdd error_rate = (errors[] / total[]) * 100 | fieldsRemove total, errors"
+        },
+        {
+          "key": "slidingWindow",
+          "value": "5"
+        },
+        {
+          "key": "violatingSamples",
+          "value": "3"
+        },
+        {
+          "key": "dealertingSamples",
+          "value": "5"
+        },
+        {
+          "key": "alertCondition",
+          "value": "ABOVE"
+        },
+        {
+          "key": "alertOnMissingData",
+          "value": "false"
+        },
+        {
+          "key": "threshold",
+          "value": "10"
+        }
+      ]
+    },
+    "eventTemplate": {
+      "properties": [
+        {
+          "key": "event.type",
+          "value": "CUSTOM_ALERT"
+        },
+        {
+          "key": "event.name",
+          "value": "Problem #6/#8 \u00b7 LLM error rate elevated"
+        },
+        {
+          "key": "event.description",
+          "value": "LLM call error rate crossed the threshold (invalid-model / rate-limit / upstream failures).\n\nThreshold: {threshold}, condition: {alert_condition}."
+        }
+      ]
+    }
+  }
+}

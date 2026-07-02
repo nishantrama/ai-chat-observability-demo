@@ -90,6 +90,15 @@ OTEL_EXPORTER_OTLP_HEADERS=Authorization=Api-Token dt0c01.XXXXXXXX
 If the endpoint is left blank, spans and metrics print to the console so you can
 still see the instrumentation working without a backend.
 
+## Davis anomaly detectors
+
+[`anomaly-detectors/`](anomaly-detectors/) has nine ready-to-apply Davis
+anomaly detectors (one per problem, named after it) that raise Dynatrace
+**Problems** on cost spikes, error rate, latency, retry storms, silent
+fallbacks, misrouting, cache misses, and low rate-limit headroom. See
+[`anomaly-detectors/README.md`](anomaly-detectors/README.md) — note these
+require an **OAuth/platform token** to create (a classic API token is rejected).
+
 ## Ready-made dashboard
 
 Import [`dashboards/ai-observability-dashboard.json`](dashboards/ai-observability-dashboard.json)

@@ -1,0 +1,62 @@
+{
+  "schemaId": "builtin:davis.anomaly-detectors",
+  "scope": "environment",
+  "value": {
+    "enabled": true,
+    "title": "Problem #6 \u00b7 LLM latency degradation (p95)",
+    "description": "p95 LLM call duration crossed the threshold (no timeout, slow-path chaos, retry storm).",
+    "source": "AI Chat Observability Demo",
+    "executionSettings": {
+      "queryOffset": 1
+    },
+    "analyzer": {
+      "name": "dt.statistics.ui.anomaly_detection.StaticThresholdAnomalyDetectionAnalyzer",
+      "input": [
+        {
+          "key": "query",
+          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries p95_ms = percentile(duration, 95) / 1000000.0, interval:1m"
+        },
+        {
+          "key": "slidingWindow",
+          "value": "5"
+        },
+        {
+          "key": "violatingSamples",
+          "value": "3"
+        },
+        {
+          "key": "dealertingSamples",
+          "value": "5"
+        },
+        {
+          "key": "alertCondition",
+          "value": "ABOVE"
+        },
+        {
+          "key": "alertOnMissingData",
+          "value": "false"
+        },
+        {
+          "key": "threshold",
+          "value": "4000"
+        }
+      ]
+    },
+    "eventTemplate": {
+      "properties": [
+        {
+          "key": "event.type",
+          "value": "CUSTOM_ALERT"
+        },
+        {
+          "key": "event.name",
+          "value": "Problem #6 \u00b7 LLM latency degradation (p95)"
+        },
+        {
+          "key": "event.description",
+          "value": "p95 LLM call duration crossed the threshold (no timeout, slow-path chaos, retry storm).\n\nThreshold: {threshold}, condition: {alert_condition}."
+        }
+      ]
+    }
+  }
+}
