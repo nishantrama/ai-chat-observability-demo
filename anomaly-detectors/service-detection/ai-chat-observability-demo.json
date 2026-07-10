@@ -1,0 +1,27 @@
+{
+  "schemaId": "builtin:anomaly-detection.services",
+  "scope": "SERVICE-2AFE004B00E304DF",
+  "value": {
+    "responseTime": {
+      "enabled": false
+    },
+    "failureRate": {
+      "enabled": true,
+      "detectionMode": "fixed",
+      "fixedDetection": {
+        "sensitivity": "high",
+        "threshold": 10.0,
+        "overAlertingProtection": {
+          "requestsPerMinute": 1.0,
+          "minutesAbnormalState": 1
+        }
+      }
+    },
+    "loadDrops": {
+      "enabled": false
+    },
+    "loadSpikes": {
+      "enabled": false
+    }
+  }
+}
