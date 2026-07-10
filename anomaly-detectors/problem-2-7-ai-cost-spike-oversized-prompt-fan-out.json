@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "Estimated LLM spend per minute crossed the threshold \u2014 likely the huge system prompt or the 4-calls-per-turn fan-out.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

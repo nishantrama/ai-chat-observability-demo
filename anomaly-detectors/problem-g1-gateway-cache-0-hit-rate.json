@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "High volume of gateway cache lookups that all miss \u2014 the cache key includes a nonce, so it never hits.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

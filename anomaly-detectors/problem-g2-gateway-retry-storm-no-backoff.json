@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "Gateway upstream retries per minute is high \u2014 retries with no backoff amplify load and cost.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

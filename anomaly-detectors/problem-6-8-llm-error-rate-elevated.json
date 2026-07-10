@@ -14,7 +14,7 @@
       "input": [
         {
           "key": "query",
-          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"ERROR\"), interval:1m | fieldsAdd error_rate = (errors[] / total[]) * 100 | fieldsRemove total, errors"
+          "value": "fetch spans | filter isNotNull(gen_ai.request.model) | makeTimeseries total = count(), errors = countIf(span.status_code == \"error\"), interval:1m | fieldsAdd error_rate = (errors[] / total[]) * 100 | fieldsRemove total, errors"
         },
         {
           "key": "slidingWindow",
@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "LLM call error rate crossed the threshold (invalid-model / rate-limit / upstream failures).\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

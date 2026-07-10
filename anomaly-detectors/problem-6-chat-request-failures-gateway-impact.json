@@ -3,18 +3,19 @@
   "scope": "environment",
   "value": {
     "enabled": true,
-    "title": "Problem G3 \u00b7 Gateway silent fallback to cheaper model",
-    "description": "The gateway silently downgraded to the cheapest model after exhausting retries \u2014 possible quality degradation.",
+    "title": "Problem #6 \u00b7 Chat request failures (gateway impact)",
+    "description": "Chat turns are failing \u2014 usually downstream impact of an ai-gateway degradation (retry storm / upstream errors). Davis should root-cause this to ai-gateway.",
     "source": "AI Chat Observability Demo",
     "executionSettings": {
-      "queryOffset": 1
+      "queryOffset": 1,
+      "actor": "480564d1-677c-4960-a7e7-36fb388f3079"
     },
     "analyzer": {
       "name": "dt.statistics.ui.anomaly_detection.StaticThresholdAnomalyDetectionAnalyzer",
       "input": [
         {
           "key": "query",
-          "value": "timeseries fallbacks = sum(gateway.fallbacks), interval:1m"
+          "value": "fetch spans | filter span.name == \"chat.turn\" | makeTimeseries total = count(), errors = countIf(span.status_code == \"error\"), interval:1m | fieldsAdd error_rate_pct = (errors[] / total[]) * 100 | fieldsRemove total, errors"
         },
         {
           "key": "slidingWindow",
@@ -38,7 +39,7 @@
         },
         {
           "key": "threshold",
-          "value": "0"
+          "value": "10"
         }
       ]
     },
@@ -50,15 +51,15 @@
         },
         {
           "key": "event.name",
-          "value": "Problem G3 \u00b7 Gateway silent fallback to cheaper model"
+          "value": "Problem #6 \u00b7 Chat request failures (gateway impact)"
         },
         {
           "key": "event.description",
-          "value": "The gateway silently downgraded to the cheapest model after exhausting retries \u2014 possible quality degradation.\n\nThreshold: {threshold}, condition: {alert_condition}."
+          "value": "Chat turns are failing \u2014 usually downstream impact of an ai-gateway degradation (retry storm / upstream errors). Davis should root-cause this to ai-gateway."
         },
         {
           "key": "dt.source_entity",
-          "value": "SERVICE-6393171F4250A188"
+          "value": "SERVICE-2AFE004B00E304DF"
         }
       ]
     }

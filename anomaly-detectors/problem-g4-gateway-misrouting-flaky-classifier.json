@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "The gateway routed calls to the wrong model tier (misrouted) above the acceptable rate.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "tokens-remaining reported by the anthropic-ratelimit-* headers dropped below the safety threshold.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }

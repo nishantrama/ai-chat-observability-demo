@@ -55,6 +55,10 @@
         {
           "key": "event.description",
           "value": "Total tokens per minute is abnormally high \u2014 unbounded history + oversized prompt.\n\nThreshold: {threshold}, condition: {alert_condition}."
+        },
+        {
+          "key": "dt.source_entity",
+          "value": "SERVICE-6393171F4250A188"
         }
       ]
     }
